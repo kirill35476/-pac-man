@@ -23,22 +23,26 @@ PACMAN_SIZE = 30  # Размер изображения (30x30 пикселей)
 
 # Создаем точки для сбора
 class Dot:
-    def __init__(self, pos):
+    def __init__(self, pos, is_special=False):
         self.pos = pos
         self.collected = False
         self.radius = 5
+        self.is_special = is_special  # True для синих точек
 
     def draw(self, screen):
         if not self.collected:
-            pygame.draw.circle(screen, (255, 255, 0), self.pos, self.radius)
+            color = (0, 0, 255) if self.is_special else (255, 255, 0)
+            pygame.draw.circle(screen, color, self.pos, self.radius)
 
 
-def create_dots(count, size):
+def create_dots(count, size, special_ratio=0.2):
     dots = []
+    special_count = int(count * special_ratio)
     for _ in range(count):
         x = random.randint(50, size[0] - 50)
         y = random.randint(50, size[1] - 50)
-        dots.append(Dot((x, y)))
+        is_special = len([d for d in dots if d.is_special]) < special_count
+        dots.append(Dot((x, y), is_special))
     return dots
 
 
@@ -112,7 +116,7 @@ def is_dot_inside_pacman(pacman_center, dot_pos):
 # Инициализация игры
 size = (800, 600)
 screen = pygame.display.set_mode(size)
-pygame.display.set_caption("Pac-Man Турнир: Собираем всем телом!")
+pygame.display.set_caption("Pac-Man Турнир: Остерегайтесь синих точек!")
 BACKGROUND = (0, 0, 0)
 FPS = 60
 clock = pygame.time.Clock()
@@ -125,8 +129,8 @@ ai_pos = [200, 200]  # Управляется ИИ
 player_score = 0
 ai_score = 0
 
-# Создаем начальные точки
-dots = create_dots(50, size)
+# Создаем начальные точки (20% будут синими)
+dots = create_dots(50, size, special_ratio=0.2)
 
 # Таймер (3 минуты = 180 секунд)
 game_time = 180  # 3 минуты
@@ -169,36 +173,51 @@ while running:
 
     # Проверяем, остались ли точки
     if all(dot.collected for dot in dots):
-        dots = create_dots(50, size)  # Создаем новые точки
+        dots = create_dots(50, size, special_ratio=0.2)  # Создаем новые точки
 
-    # ИИ выбирает ближайшую точку
+    # ИИ выбирает ближайшую точку (избегает синих)
     if dots:
-        # Находим ближайшую не собранную точку
+        # Сначала ищем обычные точки
         closest_dot = None
         min_dist = float('inf')
         for dot in dots:
-            if not dot.collected:
+            if not dot.collected and not dot.is_special:
                 dist = distance(ai_pos, dot.pos)
                 if dist < min_dist:
                     min_dist = dist
                     closest_dot = dot
 
+        # Если обычных нет, ищем любые
+        if closest_dot is None:
+            for dot in dots:
+                if not dot.collected:
+                    dist = distance(ai_pos, dot.pos)
+                    if dist < min_dist:
+                        min_dist = dist
+                        closest_dot = dot
+
         if closest_dot:
             ai_direction = get_direction(ai_pos, closest_dot.pos)
             ai_pos = list(move_towards(ai_pos, closest_dot.pos))
 
-    # Проверка сбора точек (теперь всем телом!)
+    # Проверка сбора точек
     for dot in dots:
         if not dot.collected:
             # Для игрока
             if is_dot_inside_pacman(player_pos, dot.pos):
                 dot.collected = True
-                player_score += 1
+                if dot.is_special:
+                    player_score = max(0, player_score - 10)  # Отнимаем 10 очков (не меньше 0)
+                else:
+                    player_score += 1
 
             # Для ИИ
             if is_dot_inside_pacman(ai_pos, dot.pos):
                 dot.collected = True
-                ai_score += 1
+                if dot.is_special:
+                    ai_score = max(0, ai_score - 10)  # Отнимаем 10 очков (не меньше 0)
+                else:
+                    ai_score += 1
 
     # Отрисовка
     screen.fill(BACKGROUND)
